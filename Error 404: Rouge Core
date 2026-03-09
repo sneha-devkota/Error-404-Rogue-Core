@@ -1,0 +1,181 @@
+<!DOCTYPE html>
+<html>
+<head>
+    <title>Error 404:Rouge Core</title>
+    <style>
+        body { margin: 0; background: #050505; color: #00f2fe; display: flex; flex-direction: column; align-items: center; justify-content: center; height: 100vh; font-family: 'Courier New', monospace; overflow: hidden; }
+        #ctx { border: 2px solid #00f2fe; box-shadow: 0 0 20px #00f2fe55; background: #000; }
+        .stats { margin-bottom: 10px; font-size: 20px; display: flex; gap: 40px; font-weight: bold; }
+        #hp { color: #ff0055; text-shadow: 0 0 10px #ff0055; }
+        #best { color: #ffd700; text-shadow: 0 0 10px #ffd700; }
+    </style>
+</head>
+<body>
+    <div class="stats">
+        <span>LEVEL: <span id="lvl">1</span></span>
+        <span>BEST: <span id="best">0</span></span>
+        <span>HP: <span id="hp">3</span></span>
+    </div>
+    <canvas id="ctx"></canvas>
+
+<script>
+const canvas = document.getElementById('ctx');
+const ctx = canvas.getContext('2d');
+const TILE_SIZE = 40;
+const GRID_SIZE = 12;
+canvas.width = TILE_SIZE * GRID_SIZE;
+canvas.height = TILE_SIZE * GRID_SIZE;
+
+let map = [], enemies = [], player = { x: 1, y: 1, hp: 3 }, exit = { x: 0, y: 0 };
+let level = 1, shake = 0, message = "", canMove = true;
+
+// Load high score
+let highScore = localStorage.getItem('rogueBestLevel') || 1;
+
+function initLevel() {
+    map = Array.from({ length: GRID_SIZE }, () => Array(GRID_SIZE).fill(1));
+    enemies = [];
+    let cx = 1, cy = 1, floors = 0;
+    map[cy][cx] = 0;
+
+    while (floors < 45) {
+        let dir = Math.floor(Math.random() * 4);
+        let nx = cx, ny = cy;
+        if (dir === 0) nx++; else if (dir === 1) nx--; else if (dir === 2) ny++; else if (dir === 3) ny--;
+        if (nx > 0 && nx < GRID_SIZE - 1 && ny > 0 && ny < GRID_SIZE - 1) {
+            cx = nx; cy = ny;
+            if (map[cy][cx] === 1) { map[cy][cx] = 0; floors++; exit = {x: cx, y: cy}; }
+        }
+    }
+
+    // Spawn enemies far from start
+    for(let i=0; i < level + 1; i++) {
+        let ex, ey;
+        do { 
+            ex = Math.floor(Math.random()*GRID_SIZE); 
+            ey = Math.floor(Math.random()*GRID_SIZE); 
+        } while (map[ey][ex] !== 0 || Math.hypot(ex-1, ey-1) < 4 || (ex === exit.x && ey === exit.y));
+        enemies.push({x: ex, y: ey});
+    }
+    
+    player.x = 1; player.y = 1;
+    message = "LEVEL " + level;
+    setTimeout(() => { message = ""; draw(); }, 800);
+    updateUI();
+    draw();
+}
+
+function moveEnemies() {
+    enemies.forEach(en => {
+        let oldX = en.x, oldY = en.y;
+        let dx = player.x - en.x;
+        let dy = player.y - en.y;
+        let nx = en.x, ny = en.y;
+
+        if (Math.abs(dx) > Math.abs(dy)) nx += Math.sign(dx);
+        else ny += Math.sign(dy);
+
+        if (map[ny][nx] === 0 && !enemies.some(e => e !== en && e.x === nx && e.y === ny)) {
+            en.x = nx; en.y = ny;
+        }
+
+        if (en.x === player.x && en.y === player.y) {
+            player.hp--;
+            shake = 15;
+            en.x = oldX; en.y = oldY; 
+            updateUI();
+            if (player.hp <= 0) {
+                canMove = false;
+                alert("CORE OVERHEAT. BEST LEVEL: " + highScore);
+                location.reload();
+            }
+        }
+    });
+}
+
+function updateUI() {
+    if (level > highScore) {
+        highScore = level;
+        localStorage.setItem('rogueBestLevel', highScore);
+    }
+    document.getElementById('hp').innerText = player.hp;
+    document.getElementById('lvl').innerText = level;
+    document.getElementById('best').innerText = highScore;
+}
+
+function draw() {
+    ctx.save();
+    if(shake > 0) { ctx.translate((Math.random()-0.5)*10, (Math.random()-0.5)*10); shake--; }
+    ctx.clearRect(0,0,canvas.width,canvas.height);
+
+    for(let y=0; y<GRID_SIZE; y++) {
+        for(let x=0; x<GRID_SIZE; x++) {
+            let d = Math.hypot(x-player.x, y-player.y);
+            if (d < 4.5) {
+                ctx.fillStyle = map[y][x] === 1 ? "#111" : "#0a0a0a";
+                ctx.fillRect(x*TILE_SIZE, y*TILE_SIZE, TILE_SIZE, TILE_SIZE);
+                if(x===exit.x && y===exit.y) {
+                    ctx.fillStyle = "#ffd700"; ctx.shadowBlur = 15; ctx.shadowColor = "#ffd700";
+                    ctx.beginPath(); ctx.arc(x*TILE_SIZE+20, y*TILE_SIZE+20, 10, 0, 7); ctx.fill();
+                    ctx.shadowBlur = 0;
+                }
+            } else {
+                ctx.fillStyle = "black"; ctx.fillRect(x*TILE_SIZE, y*TILE_SIZE, TILE_SIZE, TILE_SIZE);
+            }
+        }
+    }
+
+    enemies.forEach(en => {
+        if(Math.hypot(en.x-player.x, en.y-player.y) < 4.5) {
+            ctx.fillStyle = "#ff0055"; ctx.shadowBlur = 10; ctx.shadowColor = "#ff0055";
+            ctx.fillRect(en.x*TILE_SIZE+10, en.y*TILE_SIZE+10, 20, 20);
+        }
+    });
+
+    ctx.fillStyle = "#00f2fe"; ctx.shadowBlur = 15; ctx.shadowColor = "#00f2fe";
+    ctx.fillRect(player.x*TILE_SIZE+8, player.y*TILE_SIZE+8, 24, 24);
+
+    if (message) {
+        ctx.fillStyle = "rgba(0,0,0,0.85)"; ctx.fillRect(0, 160, canvas.width, 80);
+        ctx.fillStyle = "white"; ctx.font = "bold 24px Courier"; ctx.textAlign = "center";
+        ctx.fillText(message, canvas.width/2, 210);
+    }
+    ctx.restore();
+    if(shake > 0) requestAnimationFrame(draw);
+}
+
+window.onkeydown = (e) => {
+    if(!canMove || message) return;
+    let nx = player.x, ny = player.y;
+    if (e.key === "ArrowRight") nx++;
+    else if (e.key === "ArrowLeft") nx--;
+    else if (e.key === "ArrowUp") ny--;
+    else if (e.key === "ArrowDown") ny++;
+    else return;
+
+    e.preventDefault();
+
+    if (map[ny] && map[ny][nx] === 0) {
+        let targetIndex = enemies.findIndex(en => en.x === nx && en.y === ny);
+        if (targetIndex !== -1) {
+            enemies.splice(targetIndex, 1); 
+            shake = 8;
+        } else {
+            player.x = nx; player.y = ny;
+        }
+        
+        if (!(player.x === exit.x && player.y === exit.y)) {
+            moveEnemies();
+        } else {
+            level++;
+            player.hp = Math.min(3, player.hp + 1);
+            initLevel();
+        }
+    }
+    draw();
+};
+
+initLevel();
+</script>
+</body>
+</html>
